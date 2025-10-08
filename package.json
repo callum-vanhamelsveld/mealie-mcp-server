@@ -1,0 +1,21 @@
+{
+  "name": "mealie-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for Mealie API (stdio, npx).",
+  "bin": {
+    "mealie-mcp-server": "./src/index.js"
+  },
+  "type": "module",
+  "license": "MIT",
+  "author": "Callum van Hamelsveld",
+  "scripts": {
+    "start": "node ./src/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "mealie",
+    "anythingllm",
+    "stdio",
+    "tools"
+  ]
+}
