@@ -1,15 +1,12 @@
 import readline from "node:readline";
 
-// Minimal JSON-RPC 2.0 over stdio for MCP-like behavior that many hypervisors expect.
-// Methods supported:
-// - initialize
-// - tools/list
-// - tools/call
-// - shutdown
+// JSON-RPC 2.0 over stdio with MCP-compatible methods:
+// - initialize -> returns { protocolVersion, capabilities, serverInfo }
+// - tools/list -> returns { tools: [{ name, description, inputSchema: { jsonSchema } }] }
+// - tools/call -> executes a tool with { name, args }
+// - shutdown   -> clean exit
 //
-// Requests: {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-// Responses: {"jsonrpc":"2.0","id":1,"result":{...}}
-// Notifications (no id): {"jsonrpc":"2.0","method":"event","params":{...}}
+// Emits an "initialized" event immediately so supervisors detect startup.
 
 export function createStdioServer({ tools, onShutdown }) {
   const rl = readline.createInterface({
@@ -26,12 +23,15 @@ export function createStdioServer({ tools, onShutdown }) {
   process.stdout.write("MCP server booting\n");
   write({ jsonrpc: "2.0", method: "event", params: { type: "initialized", pid: process.pid } });
 
-  function listTools() {
+  // Return tools in MCP-friendly format
+  function formatTools() {
     return Object.values(tools).map(t => ({
       name: t.name,
       description: t.description,
-      inputSchema: t.inputSchema,
-      outputSchema: t.outputSchema
+      // MCP expects schemas under inputSchema.jsonSchema for JSON Schema values
+      inputSchema: t.inputSchema ? { jsonSchema: t.inputSchema } : undefined
+      // If you later want to expose output schemas in MCP format, you can add:
+      // , outputSchema: t.outputSchema ? { jsonSchema: t.outputSchema } : undefined
     }));
   }
 
@@ -50,20 +50,33 @@ export function createStdioServer({ tools, onShutdown }) {
     try {
       switch (method) {
         case "initialize": {
-          const result = { protocol: "jsonrpc-2.0", tools: listTools() };
+          // AnythingLLM expects these fields specifically
+          const result = {
+            protocolVersion: "2024-11-05", // recent MCP protocol string
+            capabilities: {
+              tools: {} // advertise that we support tools
+            },
+            serverInfo: {
+              name: "mealie-mcp-server",
+              version: "0.1.0"
+            }
+          };
           write({ jsonrpc: "2.0", id, result });
           break;
         }
+
         case "tools/list": {
-          const result = { tools: listTools() };
+          const result = { tools: formatTools() };
           write({ jsonrpc: "2.0", id, result });
           break;
         }
+
         case "tools/call": {
           const result = await callTool(params || {});
           write({ jsonrpc: "2.0", id, result });
           break;
         }
+
         case "shutdown": {
           write({ jsonrpc: "2.0", id, result: { ok: true } });
           rl.close();
@@ -71,8 +84,13 @@ export function createStdioServer({ tools, onShutdown }) {
           process.exit(0);
           break;
         }
+
         default: {
-          write({ jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown method '${method}'` } });
+          write({
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32601, message: `Unknown method '${method}'` }
+          });
         }
       }
     } catch (e) {
@@ -92,7 +110,7 @@ export function createStdioServer({ tools, onShutdown }) {
     try {
       msg = JSON.parse(line);
     } catch {
-      // Non-JSON line; ignore or emit parse error without id.
+      // Non-JSON line; emit parse error (no id)
       write({ jsonrpc: "2.0", error: { code: -32700, message: "Parse error" } });
       return;
     }
