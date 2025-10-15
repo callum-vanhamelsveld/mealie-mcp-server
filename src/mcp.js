@@ -1,8 +1,15 @@
 import readline from "node:readline";
 
-// Minimal MCP-like stdio loop:
-// - Expects JSON messages per line from stdin
-// - Dispatches to handlers and writes JSON responses per line to stdout
+// Minimal JSON-RPC 2.0 over stdio for MCP-like behavior that many hypervisors expect.
+// Methods supported:
+// - initialize
+// - tools/list
+// - tools/call
+// - shutdown
+//
+// Requests: {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+// Responses: {"jsonrpc":"2.0","id":1,"result":{...}}
+// Notifications (no id): {"jsonrpc":"2.0","method":"event","params":{...}}
 
 export function createStdioServer({ tools, onShutdown }) {
   const rl = readline.createInterface({
@@ -11,45 +18,73 @@ export function createStdioServer({ tools, onShutdown }) {
     terminal: false
   });
 
-  function write(msg) {
-    process.stdout.write(JSON.stringify(msg) + "\n");
+  function write(obj) {
+    process.stdout.write(JSON.stringify(obj) + "\n");
   }
 
-  // Advertise capabilities on handshake
-  function handleHandshake() {
-    const advertisedTools = Object.values(tools).map(t => ({
+  // Emit something immediately so supervisors consider us alive
+  process.stdout.write("MCP server booting\n");
+  write({ jsonrpc: "2.0", method: "event", params: { type: "initialized", pid: process.pid } });
+
+  function listTools() {
+    return Object.values(tools).map(t => ({
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
       outputSchema: t.outputSchema
     }));
-    write({ type: "handshake/ok", tools: advertisedTools });
   }
 
-  // Execute tools on request
-  async function handleCallTool(payload) {
-    const { name, args } = payload || {};
+  async function callTool({ name, args }) {
     if (!name || !tools[name]) {
-      write({ type: "error", error: `Unknown tool '${name}'` });
-      return;
+      const err = new Error(`Unknown tool '${name}'`);
+      err.code = -32601;
+      throw err;
     }
+    return await tools[name].handler(args || {});
+  }
+
+  async function handleRequest(msg) {
+    const { id, method, params } = msg;
+
     try {
-      const result = await tools[name].handler(args || {});
-      write({ type: "tool/result", name, result });
-    } catch (err) {
+      switch (method) {
+        case "initialize": {
+          const result = { protocol: "jsonrpc-2.0", tools: listTools() };
+          write({ jsonrpc: "2.0", id, result });
+          break;
+        }
+        case "tools/list": {
+          const result = { tools: listTools() };
+          write({ jsonrpc: "2.0", id, result });
+          break;
+        }
+        case "tools/call": {
+          const result = await callTool(params || {});
+          write({ jsonrpc: "2.0", id, result });
+          break;
+        }
+        case "shutdown": {
+          write({ jsonrpc: "2.0", id, result: { ok: true } });
+          rl.close();
+          if (onShutdown) onShutdown();
+          process.exit(0);
+          break;
+        }
+        default: {
+          write({ jsonrpc: "2.0", id, error: { code: -32601, message: `Unknown method '${method}'` } });
+        }
+      }
+    } catch (e) {
       write({
-        type: "tool/error",
-        name,
-        error: (err && err.message) || String(err)
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: e.code ?? -32000,
+          message: e.message || String(e)
+        }
       });
     }
-  }
-
-  function handleShutdown() {
-    write({ type: "shutdown/ok" });
-    rl.close();
-    if (onShutdown) onShutdown();
-    process.exit(0);
   }
 
   rl.on("line", async (line) => {
@@ -57,36 +92,15 @@ export function createStdioServer({ tools, onShutdown }) {
     try {
       msg = JSON.parse(line);
     } catch {
-      write({ type: "error", error: "Invalid JSON message" });
+      // Non-JSON line; ignore or emit parse error without id.
+      write({ jsonrpc: "2.0", error: { code: -32700, message: "Parse error" } });
       return;
     }
 
-    switch (msg.type) {
-      case "handshake":
-        handleHandshake();
-        break;
-      case "callTool":
-        await handleCallTool(msg.payload);
-        break;
-      case "shutdown":
-        handleShutdown();
-        break;
-      default:
-        write({ type: "error", error: `Unknown message type '${msg.type}'` });
+    if (msg && msg.jsonrpc === "2.0" && msg.method) {
+      await handleRequest(msg);
+    } else {
+      write({ jsonrpc: "2.0", error: { code: -32600, message: "Invalid Request" } });
     }
   });
-
-  // Startup banner (optional)
-  function write(msg) {
-    process.stdout.write(JSON.stringify(msg) + "\n");
-  }
-
-  // Emit plain text boot line (some supervisors watch for any output early)
-  process.stdout.write("MCP server booting\n");
-
-  // Emit a ready JSON line immediately (hypervisors can latch on this)
-  write({ type: "ready", pid: process.pid });
-
-  // Existing informational line (kept for compatibility)
-  write({ type: "server/ready", message: "Mealie MCP stdio server ready" });
 }
