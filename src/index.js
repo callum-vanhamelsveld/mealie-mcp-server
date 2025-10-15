@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 
-// Temporary placeholder: we'll replace this with the MCP server implementation.
-// For now, just print a message and exit with a non-zero code if not used properly.
+import { createStdioServer } from "./mcp.js";
+import { tools } from "./tools.js";
 
-console.log("Mealie MCP Server placeholder. The MCP implementation will be added in Step 3.");
-process.exit(0);
+function main() {
+  // Basic env checks happen in http/config imports inside tools
+  createStdioServer({
+    tools,
+    onShutdown: () => {
+      // optional cleanup
+    }
+  });
+}
+
+try {
+  main();
+} catch (err) {
+  console.error(JSON.stringify({ type: "fatal", error: err.message || String(err) }));
+  process.exit(1);
+}
