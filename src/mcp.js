@@ -77,5 +77,16 @@ export function createStdioServer({ tools, onShutdown }) {
   });
 
   // Startup banner (optional)
+  function write(msg) {
+    process.stdout.write(JSON.stringify(msg) + "\n");
+  }
+
+  // Emit plain text boot line (some supervisors watch for any output early)
+  process.stdout.write("MCP server booting\n");
+
+  // Emit a ready JSON line immediately (hypervisors can latch on this)
+  write({ type: "ready", pid: process.pid });
+
+  // Existing informational line (kept for compatibility)
   write({ type: "server/ready", message: "Mealie MCP stdio server ready" });
 }

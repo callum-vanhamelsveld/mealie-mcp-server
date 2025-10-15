@@ -11,6 +11,13 @@ function main() {
       // optional cleanup
     }
   });
+  // Temporary heartbeat to satisfy strict supervisors expecting early output
+  let beats = 0;
+  const hb = setInterval(() => {
+  beats += 1;
+  process.stdout.write(JSON.stringify({ type: "heartbeat", t: Date.now() }) + "\n");
+  if (beats >= 5) clearInterval(hb);
+  }, 1000);
 }
 
 try {
