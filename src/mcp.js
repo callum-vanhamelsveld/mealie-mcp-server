@@ -26,13 +26,13 @@ export function createStdioServer({ tools, onShutdown }) {
   write({ jsonrpc: "2.0", method: "event", params: { type: "initialized", pid: process.pid } });
 
   function formatTools() {
-    return Object.values(tools).map(t => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema ? { jsonSchema: t.inputSchema } : undefined
-      // Optionally: outputSchema: t.outputSchema ? { jsonSchema: t.outputSchema } : undefined
-    }));
-  }
+   return Object.values(tools).map(t => ({
+     name: t.name,
+     description: t.description,
+     // Return the schema directly with a top-level "type": "object"
+     inputSchema: t.inputSchema || { type: "object", properties: {} }
+ }));
+}
 
   async function callTool({ name, args }) {
     if (!name || !tools[name]) {
