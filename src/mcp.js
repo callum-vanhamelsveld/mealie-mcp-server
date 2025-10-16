@@ -1,9 +1,11 @@
 import readline from "node:readline";
 
-// JSON-RPC 2.0 over stdio with MCP-compatible methods:
-// - initialize -> returns { protocolVersion, capabilities, serverInfo }
-// - tools/list -> returns { tools: [{ name, description, inputSchema: { jsonSchema } }] }
+// JSON-RPC 2.0 over stdio with MCP-compatible methods.
+// Methods:
+// - initialize -> { protocolVersion, capabilities, serverInfo }
+// - tools/list -> { tools: [{ name, description, inputSchema: { jsonSchema } }] }
 // - tools/call -> executes a tool with { name, args }
+// - ping       -> basic liveness check { ok: true }
 // - shutdown   -> clean exit
 //
 // Emits an "initialized" event immediately so supervisors detect startup.
@@ -23,15 +25,12 @@ export function createStdioServer({ tools, onShutdown }) {
   process.stdout.write("MCP server booting\n");
   write({ jsonrpc: "2.0", method: "event", params: { type: "initialized", pid: process.pid } });
 
-  // Return tools in MCP-friendly format
   function formatTools() {
     return Object.values(tools).map(t => ({
       name: t.name,
       description: t.description,
-      // MCP expects schemas under inputSchema.jsonSchema for JSON Schema values
       inputSchema: t.inputSchema ? { jsonSchema: t.inputSchema } : undefined
-      // If you later want to expose output schemas in MCP format, you can add:
-      // , outputSchema: t.outputSchema ? { jsonSchema: t.outputSchema } : undefined
+      // Optionally: outputSchema: t.outputSchema ? { jsonSchema: t.outputSchema } : undefined
     }));
   }
 
@@ -50,11 +49,10 @@ export function createStdioServer({ tools, onShutdown }) {
     try {
       switch (method) {
         case "initialize": {
-          // AnythingLLM expects these fields specifically
           const result = {
-            protocolVersion: "2024-11-05", // recent MCP protocol string
+            protocolVersion: "2024-11-05",
             capabilities: {
-              tools: {} // advertise that we support tools
+              tools: {} // advertise tool capability
             },
             serverInfo: {
               name: "mealie-mcp-server",
@@ -74,6 +72,12 @@ export function createStdioServer({ tools, onShutdown }) {
         case "tools/call": {
           const result = await callTool(params || {});
           write({ jsonrpc: "2.0", id, result });
+          break;
+        }
+
+        case "ping": {
+          // Some supervisors issue a ping to check liveness
+          write({ jsonrpc: "2.0", id, result: { ok: true, t: Date.now() } });
           break;
         }
 
@@ -110,7 +114,6 @@ export function createStdioServer({ tools, onShutdown }) {
     try {
       msg = JSON.parse(line);
     } catch {
-      // Non-JSON line; emit parse error (no id)
       write({ jsonrpc: "2.0", error: { code: -32700, message: "Parse error" } });
       return;
     }
