@@ -76,8 +76,8 @@ export function createStdioServer({ tools, onShutdown }) {
         }
 
         case "ping": {
-          // Some supervisors issue a ping to check liveness
-          write({ jsonrpc: "2.0", id, result: { ok: true, t: Date.now() } });
+        // Return an empty object to satisfy strict schema
+          write({ jsonrpc: "2.0", id, result: {} });
           break;
         }
 
