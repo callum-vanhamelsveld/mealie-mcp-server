@@ -32,7 +32,7 @@ export const tools = {
 
       try {
         // NOTE: Mealie API search endpoint paths can differ by version.
-        // Adjust '/api/recipes/search' if your instance uses a different route.
+        // We use /api/recipes with 'search' param for your instance.
         const res = await http.get("/api/recipes", {
           params: {
             search: query,
@@ -52,7 +52,11 @@ export const tools = {
 
         return { results: mapped };
       } catch (err) {
-        throw new Error(normalizeError(err));
+        // Improved error propagation for MCP clients
+        const msg = normalizeError(err);
+        const e = new Error(msg);
+        e.code = "MEALIE_HTTP_ERROR";
+        throw e;
       }
     }
   },
@@ -99,7 +103,11 @@ export const tools = {
           url: `${http.defaults.baseURL}/recipe/${data.slug || id}`
         };
       } catch (err) {
-        throw new Error(normalizeError(err));
+        // Improved error propagation for MCP clients
+        const msg = normalizeError(err);
+        const e = new Error(msg);
+        e.code = "MEALIE_HTTP_ERROR";
+        throw e;
       }
     }
   }
