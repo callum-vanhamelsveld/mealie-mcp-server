@@ -31,28 +31,33 @@ export const tools = {
       const { query, limit = 10, tags = [] } = args;
 
       try {
-        // NOTE: Mealie API search endpoint paths can differ by version.
-        // We use /api/recipes with 'search' param for your instance.
+        // Mealie expects: GET /api/recipes?search=&perPage=&tags=&tags=&requireAllTags=
+        // Note: use perPage (not "limit"), and pass tags as an array (Axios will serialize repeated keys).
         const res = await http.get("/api/recipes", {
           params: {
             search: query,
-            limit,
-            tags: tags.join(",")
+            perPage: limit,
+            // If you want AND behavior for tags, add: requireAllTags: true
+            // For now we keep default OR behavior.
+            ...(Array.isArray(tags) && tags.length > 0 ? { tags } : {})
           }
         });
 
-        const items = res.data.items || res.data.results || res.data || [];
+        const body = res.data || {};
+        const items = Array.isArray(body.items) ? body.items : (Array.isArray(body) ? body : []);
         const mapped = items.map((r) => ({
-          id: String(r.id || r._id || r.slug || r.recipeId || r.uuid || ""),
+          id: String(r.id || r.slug || ""),
           title: r.name || r.title || "Untitled",
           summary: r.description || r.summary || "",
-          tags: r.tags || r.categories || [],
-          url: `${http.defaults.baseURL}/recipe/${r.slug || r.id || ""}`
+          // tags may be an array of objects {id,name,slug} in Mealie summaries
+          tags: Array.isArray(r.tags)
+            ? r.tags.map(t => (typeof t === "string" ? t : (t?.name || t?.slug || ""))).filter(Boolean)
+            : [],
+          url: `${http.defaults.baseURL.replace(/\/+$/, "")}/recipe/${r.slug || r.id || ""}`
         }));
 
         return { results: mapped };
       } catch (err) {
-        // Improved error propagation for MCP clients
         const msg = normalizeError(err);
         const e = new Error(msg);
         e.code = "MEALIE_HTTP_ERROR";
@@ -63,7 +68,7 @@ export const tools = {
 
   get_recipe_by_id: {
     name: "get_recipe_by_id",
-    description: "Fetch a full recipe by ID.",
+    description: "Fetch a full recipe by ID (or slug).",
     inputSchema: getRecipeInput,
     outputSchema: getRecipeOutput,
     handler: async (args) => {
@@ -71,17 +76,18 @@ export const tools = {
       const { id } = args;
 
       try {
+        // Mealie detail: GET /api/recipes/{slug} where slug can be slug or UUID id
         const res = await http.get(`/api/recipes/${id}`);
         const data = res.data;
 
         const ingredients = (
-          data.recipeIngredient // common array of strings
+          data.recipeIngredient
           || (data.ingredients || []).map(i => i.note || i.text || i.name || "")
           || []
         );
 
         const instructions = (
-          data.recipeInstructions // common array of strings or objects
+          data.recipeInstructions
             ? data.recipeInstructions.map(s => (typeof s === "string" ? s : (s.text || s.step || "")))
             : (data.steps || data.instructions || []).map(s => s.text || s.step || "")
         );
@@ -100,10 +106,9 @@ export const tools = {
           ingredients,
           instructions,
           tags,
-          url: `${http.defaults.baseURL}/recipe/${data.slug || id}`
+          url: `${http.defaults.baseURL.replace(/\/+$/, "")}/recipe/${data.slug || id}`
         };
       } catch (err) {
-        // Improved error propagation for MCP clients
         const msg = normalizeError(err);
         const e = new Error(msg);
         e.code = "MEALIE_HTTP_ERROR";
