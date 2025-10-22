@@ -23,6 +23,7 @@ export const searchRecipesOutput = {
           title: { type: "string" },
           summary: { type: "string" },
           tags: { type: "array", items: { type: "string" } },
+          slug: { type: "string" },
           url: { type: "string" }
         },
         required: ["id", "title"]
@@ -36,9 +37,13 @@ export const searchRecipesOutput = {
 export const getRecipeInput = {
   type: "object",
   properties: {
-    id: { type: "string", minLength: 1 }
+    id: { type: "string", minLength: 1 },
+    slug: { type: "string", minLength: 1 }
   },
-  required: ["id"],
+  oneOf: [
+    { required: ["id"] },
+    { required: ["slug"] }
+  ],
   additionalProperties: false
 };
 
@@ -51,6 +56,7 @@ export const getRecipeOutput = {
     ingredients: { type: "array", items: { type: "string" } },
     instructions: { type: "array", items: { type: "string" } },
     tags: { type: "array", items: { type: "string" } },
+    slug: { type: "string" },
     url: { type: "string" }
   },
   required: ["id", "title"],
