@@ -4,8 +4,21 @@ export const searchRecipesInput = {
   type: "object",
   properties: {
     query: { type: "string", minLength: 1 },
-    limit: { type: "integer", minimum: 1, maximum: 50 },
-    tags: { type: "array", items: { type: "string" } }
+
+    // Backward-compatible "limit" (we'll map it to perPage in code)
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+
+    // Preferred explicit page size for Mealie
+    perPage: { type: "integer", minimum: 1, maximum: 100 },
+
+    // Pagination page number (1-based)
+    page: { type: "integer", minimum: 1 },
+
+    // Tag filters
+    tags: { type: "array", items: { type: "string" } },
+
+    // Tag matching mode: true = AND (all tags must match), false = OR (any tag)
+    requireAllTags: { type: "boolean" }
   },
   required: ["query"],
   additionalProperties: false

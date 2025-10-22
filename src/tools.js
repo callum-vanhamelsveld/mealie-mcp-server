@@ -23,25 +23,45 @@ function validate(schema, payload) {
 }
 
 export const tools = {
-  search_recipes: {
+    search_recipes: {
     name: "search_recipes",
-    description: "Search Mealie recipes by text query, with optional tags and limit.",
+    description: "Search Mealie recipes by text query, with optional tags and pagination.",
     inputSchema: searchRecipesInput,
     outputSchema: searchRecipesOutput,
     handler: async (args) => {
       validate(searchRecipesInput, args);
-      const { query, limit = 10, tags = [] } = args;
+      const {
+        query,
+        // Prefer perPage, fall back to legacy limit, default 10
+        perPage,
+        limit,
+        page,
+        tags = [],
+        requireAllTags
+      } = args;
+
+      // Determine the effective page size
+      const pageSize = (typeof perPage === "number" ? perPage : (typeof limit === "number" ? limit : 10));
 
       try {
-        // Mealie expects: GET /api/recipes?search=&perPage=&tags=&tags=&requireAllTags=
-        const res = await http.get("/api/recipes", {
-          params: {
-            search: query,
-            perPage: limit,
-            // Default OR behavior across tags; add requireAllTags: true if you need AND matching
-            ...(Array.isArray(tags) && tags.length > 0 ? { tags } : {})
-          }
-        });
+        // Build query params aligned with Mealie API
+        const params = {
+          search: query,
+          perPage: pageSize
+        };
+
+        if (typeof page === "number") {
+          params.page = page;
+        }
+        if (Array.isArray(tags) && tags.length > 0) {
+          // Axios will serialize arrays as repeated keys: tags=a&tags=b
+          params.tags = tags;
+        }
+        if (typeof requireAllTags === "boolean") {
+          params.requireAllTags = requireAllTags;
+        }
+
+        const res = await http.get("/api/recipes", { params });
 
         const body = res.data || {};
         const items = Array.isArray(body.items)
