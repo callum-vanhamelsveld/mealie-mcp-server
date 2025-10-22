@@ -7,14 +7,12 @@ import { getConfig } from "./config.js";
 const cfg = getConfig();
 
 /**
- * Optional corporate CA trust (for environments with TLS interception like Cisco Umbrella)
- * - This block activates ONLY if:
- *   a) MCP_EXTRA_CA env var points to a readable PEM file, OR
- *   b) a local ./corp-root.pem file exists
- * - In all other cases, Axios/Node use the default trust store and this has no effect.
- * - Safe to keep in public code; it’s dormant unless explicitly enabled.
+ * Optional corporate CA trust (TLS interception support).
+ * Activates ONLY if:
+ *  - MCP_EXTRA_CA env var points to a readable PEM file, OR
+ *  - a local ./corp-root.pem file exists next to package.json
  */
-let httpsAgent; // undefined by default (no change in behavior unless activated)
+let httpsAgent; // undefined by default
 
 try {
   const extraCaPathEnv = process.env.MCP_EXTRA_CA;
@@ -34,16 +32,11 @@ try {
       rejectUnauthorized: true
     });
   }
-} catch (e) {
-  // If anything goes wrong reading the CA, fall back to default trust without failing startup
-  // console.warn("Optional MCP_EXTRA_CA load failed:", e?.message || e);
+} catch {
+  // Ignore optional CA load errors; default trust will be used.
 }
 
-/**
- * Axios client for Mealie API
- * - If httpsAgent is defined (corporate CA loaded), it will be used.
- * - Otherwise, Axios uses the default agent and trust settings.
- */
+// Create Axios client (inject httpsAgent only if present)
 export const http = axios.create({
   baseURL: cfg.baseUrl,
   timeout: cfg.timeoutMs,
@@ -54,6 +47,19 @@ export const http = axios.create({
   }
 });
 
+// DEBUG: print whether extra CA is active and what base URL we use
+try {
+  // stderr so supervisors/clients don't parse it as protocol output
+  console.error(
+    JSON.stringify({
+      type: "debug",
+      at: "http-startup",
+      baseURL: cfg.baseUrl,
+      extraCA: !!httpsAgent
+    })
+  );
+} catch { /* no-op */ }
+
 // Normalize errors for tool responses
 export function normalizeError(err) {
   if (err.response) {
@@ -62,7 +68,6 @@ export function normalizeError(err) {
     return `HTTP ${status}: ${JSON.stringify(data)}`;
   }
   if (err.code) {
-    // Provide more specific TLS/network diagnostics if available
     return `Network/TLS error ${err.code}: ${err.message}`;
   }
   if (err.request) {
