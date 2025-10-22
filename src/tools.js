@@ -59,6 +59,8 @@ export const tools = {
         return { results: mapped };
       } catch (err) {
         const msg = normalizeError(err);
+        // Log succinct tool error to stderr so AnythingLLM shows it
+        try { console.error(JSON.stringify({ type: "tool_error", tool: "search_recipes", message: msg })); } catch {}
         const e = new Error(msg);
         e.code = "MEALIE_HTTP_ERROR";
         throw e;
@@ -110,6 +112,8 @@ export const tools = {
         };
       } catch (err) {
         const msg = normalizeError(err);
+        // Log succinct tool error to stderr so AnythingLLM shows it
+        try { console.error(JSON.stringify({ type: "tool_error", tool: "get_recipe_by_id", message: msg })); } catch {}
         const e = new Error(msg);
         e.code = "MEALIE_HTTP_ERROR";
         throw e;
