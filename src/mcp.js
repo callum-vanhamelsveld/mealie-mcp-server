@@ -69,7 +69,10 @@ export function createStdioServer({ tools, onShutdown }) {
         }
 
         case "tools/call": {
-          const result = await callTool(params || {});
+          // Accept both params.args and params.arguments from different clients
+          const { name } = params || {};
+          const args = (params && (params.args ?? params.arguments)) || {};
+          const result = await callTool({ name, args });
           write({ jsonrpc: "2.0", id, result });
           break;
         }
