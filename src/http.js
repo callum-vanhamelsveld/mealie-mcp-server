@@ -50,14 +50,17 @@ export const http = axios.create({
 // DEBUG: print whether extra CA is active and what base URL we use
 try {
   // stderr so supervisors/clients don't parse it as protocol output
-  console.error(
-    JSON.stringify({
+  if (process.env.DEBUG_MCP_MEALIE === "1") {
+      console.error(JSON.stringify({
       type: "debug",
       at: "http-startup",
       baseURL: cfg.baseUrl,
+      hasToken: !!cfg.token,
+      timeoutMs: cfg.timeoutMs,
       extraCA: !!httpsAgent
     })
   );
+}
 } catch { /* no-op */ }
 
 // Normalize errors for tool responses
